@@ -2,15 +2,18 @@
 const express = require("express");
 const server = express();
 const port = 3000;
-const mongoose = require("mongoose"); //import mongoose
-require("dotenv").config(); //import dotenv
-const { DB_URI } = process.env; //to grab the same variable from the dotenv file
-const cors = require("cors"); //For disabling default browser security
-const Contact = require("./models/contact"); //importing the model schema
+const mongoose = require("mongoose"); 
+require("dotenv").config(); 
+const cors = require("cors"); 
+const Contact = require("./models/contact"); 
+const { DB_URI, SECRET_KEY } = process.env;
+const User = require("./models/user");
+const bcrypt = require("bcrypt"); 
+const jwt = require("jsonwebtoken"); 
 
 //Middleware
-server.use(express.json()); //to ensure data is trasmitted as json
-server.use(express.urlencoded({ extended: true })); //to ensure data is encoded and decoded while transmission
+server.use(express.json()); 
+server.use(express.urlencoded({ extended: true })); 
 server.use(cors());
 
 //Database connection and server listening
@@ -29,6 +32,8 @@ mongoose
 server.get("/", (request, response) => {
   response.send("Server is Live!");
 });
+
+
 
 //To GET all the data from contacts collection
 server.get("/contacts", async (request, response) => {
@@ -102,6 +107,59 @@ server.patch("/contacts/:id", async (request, response) => {
       message: `Contact has been updated`,
       date: new Date(Date.now()),
     });
+  } catch (error) {
+    response.status(500).send({ message: error.message });
+  }
+});
+
+//  new user
+server.post("/register", async (request, response) => {
+  const { username, password } = request.body;
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10); 
+    const newUser = new User({
+      username,
+      password: hashedPassword,
+    });
+
+    await newUser.save();
+    response.send({ message: "User Created!" });
+  } catch (error) {
+    response.status(500).send({
+      message: "User Already Exists, please find another username",
+    });
+  }
+});
+
+//  existing user
+server.post("/login", async (request, response) => {
+  const { username, password } = request.body;
+
+  try {
+    const user = await User.findOne({ username }); 
+    if (!user) {
+      return response.status(404).send({ message: "User does not exist" });
+    }
+
+    const match = await bcrypt.compare(password, user.password); 
+    if (!match) {
+      return response
+        .status(403)
+        .send({ message: "Incorrect username or password" });
+    }
+
+    // 
+    const jwtToken = jwt.sign(
+      { id: user._id, username },
+      SECRET_KEY
+    );
+
+    response.status(201).send({
+      message: "User Authenticated",
+      token: jwtToken,
+    });
+
   } catch (error) {
     response.status(500).send({ message: error.message });
   }
